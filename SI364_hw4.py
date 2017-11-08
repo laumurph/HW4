@@ -10,6 +10,8 @@ from wtforms import StringField, SubmitField
 from wtforms.validators import Required
 from flask_sqlalchemy import SQLAlchemy
 
+###from flask_migrate import Migrate, MigrateCommand
+
 # Configure base directory of app
 basedir = os.path.abspath(os.path.dirname(__file__))
 
@@ -20,7 +22,7 @@ app.config['SECRET_KEY'] = 'hardtoguessstringfromsi364thisisnotsupersecure'
 ## TODO SI364: Create a database in postgresql in the code line below, and fill in your app's database URI. It should be of the format: postgresql://localhost/YOUR_DATABASE_NAME
 
 ## Your Postgres database should be your uniqname, plus HW4, e.g. "jczettaHW4" or "maupandeHW4"
-app.config["SQLALCHEMY_DATABASE_URI"] = ""
+app.config["SQLALCHEMY_DATABASE_URI"] = "laumurphHW4"
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -30,7 +32,7 @@ db = SQLAlchemy(app) # For database use
 
 ## Set up Shell context so it's easy to use the shell to debug
 def make_shell_context():
-    return dict(app=app, db=db) ## TODO SI364: Add your models to this shell context function so you can use them in the shell
+    return dict(app=app, db=db, Tweet=Tweet, User=User, Hashtag=Hashtag) ## TODO SI364: Add your models to this shell context function so you can use them in the shell
     # TODO SI364: Submit a screenshot of yourself using the shell to make a query for all the Tweets in the database.
     # Filling this in will make that easier!
 
@@ -51,22 +53,29 @@ manager.add_command("shell", Shell(make_context=make_shell_context))
 # Tweet:Hashtag - Many:Many
 
 # - Tweet
-## -- id (Primary Key)
-## -- text (String, up to 285 chars)
-## -- user_id (Integer, ID of user posted)
+class Tweet(db.Model):
+    __tablename__ = "tweets"
+    id = db.Column(db.Integer, primary_key=True) ## -- id (Primary Key)
+    text = db.Column(db.String(285)) ## -- text (String, up to 285 chars)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id')) ## -- user_id (Integer, ID of user posted)
+    hashtags = db.relationship('Hashtag', secondary=tweet_hashtags, backref=db.backref('tweets', lazy='dynamic'),lazy='dynamic')
 
 # - User
-## -- id (Primary Key)
-## -- twitter_username (String, up to 64 chars) (Unique=True)
-
+class User(db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True) ## -- id (Primary Key)
+    twitter_username = db.Column(db.String(64), unique=True) ## -- twitter_username (String, up to 64 chars) (Unique=True)
+    # will I need a tweets thing? possibly
 # - Hashtag
-## -- id (Primary Key)
-## -- text (Unique=True)
+class Hashtag(db.Model):
+    __tablename__ = 'hashtags'
+    id = db.Column(db.Integer, primary_key=True) ## -- id (Primary Key)
+    text = db.Column(db.String, unique=True) ## -- text (Unique=True) #represents a single hashtag (like UMSI)
 
 # Association Table: Tweet_Hashtag
 # -- tweet_id
 # -- hashtag_id
-
+tweet_hashtags = db.Table('Tweet_Hashtags', db.Column('tweet_id', db.Integer, db.ForeignKey('tweets.id')), db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtags.id')))
 ## NOTE: You'll have to set up database relationship code in either the Tweet table or the Hashtag table so that the association table for that many-many relationship will work properly!
 
 
@@ -79,7 +88,9 @@ manager.add_command("shell", Shell(make_context=make_shell_context))
 ## -- a list of comma-separated hashtags it should have
 
 class TweetForm(FlaskForm):
-    pass
+    text = StringField("What is the text of your tweet? Note that if you include hashtags, to please separate them with commas.", validators=[Required()])
+    username = StringField("What your twitter username?",validators=[Required()])
+    submit = SubmitField('Submit')
 
 
 ##### Helper functions
@@ -94,7 +105,40 @@ class TweetForm(FlaskForm):
 ## HINT: Your get_or_create_tweet function should invoke your get_or_create_user function AND your get_or_create_hashtag function. You'll have seen an example similar to this in class!
 
 ## NOTE: If you choose to organize your code differently so it has the same effect of not encounting duplicates / identity errors, that is OK. But writing separate functions that may invoke one another is our primary suggestion.
+def get_or_create_user(db_session, username):
+    user = db_session.query(User).filter_by(twitter_username=username).first()
+    if user:
+        return user
+    else:
+        user = User(twitter_username=username)
+        db_session.add(user)
+        db_session.commit()
+        return user
 
+def get_or_create_hashtag(db_session, hashtag_given):
+    hashtag = db_session.query(Hashtag).filter_by(text = hashtag_given).first()
+    if hashtag:
+        return hashtag
+    else:
+        hashtag = Hashtag(text=hashtag_given)
+        db_session.add(hashtag)
+        db_session.commit()
+        return hashtag
+
+def get_or_create_tweet(db_session, input_text, username):
+    tweet = db_session.query(Tweet).filter_by(text=input_text, user_id=get_or_create_user(db_session, username).id).first()
+    if tweet:
+        return tweet
+    else:
+        user = get_or_create_user(db_session, username)
+        for text in input_text.split(','):
+            if "#" in text.strip():
+                pos = text.find('#')
+                hashtag = get_or_create_hashtag(db_session, text.strip()[pos:])
+        tweet = Tweet(text = input_text, user_id = user.id) # may need to add hashtag here, but probably not?
+        db_session.add(tweet)
+        db_session.commit()
+        return tweet
 
 
 
@@ -120,6 +164,8 @@ def index():
     # A template index.html has been created and provided to render what this route needs to show -- YOU just need to fill in this view function so it will work.
     ## HINT: Check out the index.html template to make sure you're sending it the data it needs.
 
+    # this is gonna need the tweets as well, like number of tweets sent as num_tweets
+    # gonna need to render the form.
 
     # The index route should:
     # - Show the Tweet form.
@@ -132,13 +178,32 @@ def index():
     # -- allow you to see all of the tweets posted
     # -- see all of the twitter users you've saved tweets for, along with how many tweets they have in your database
 
+    tweets = Tweet.query.all()
+    num_tweets = len(tweets)
+    form = TweetForm()
+    if form.validate on submit():
+        if db.session.query(Tweet).filter_by(text=form.text.data, user_id= (get_or_create_user(db.session, form.username.data).id)).first():
+            flash("You've already saved a tweet by this user!")
+        get_or_create_tweet(db.session, form.text.data, form.username.data)
+        return redirect(url_for('see_all_tweets'))
+    return render_template('index.html', form=form,num_tweets=num_tweets)
+
 @app.route('/all_tweets')
 def see_all_tweets():
-    pass
 
     # TODO SI364: Fill in this view function so that it can successfully render the template all_tweets.html, which is provided.
     ## HINT: Check out the all_songs and all_artists routes in the songs app you saw in class.
 
+    # looks like I'll want to send two things, first, is a list of tweets called all_tweets, and in the first position should be
+    # the actual text
+    # also need to send something called sg, which will contain the username. not sure how to call it sg though, since that suggests
+    # that the username is the same for each one since it doesn't iterate? Should ask about that.
+    all_tweets = []
+    tweets = Tweet.query.all()
+    for t in tweets:
+        user = User.query.filter_by(id=t.user_id).first()
+        all_tweets.append(t.text, user.twitter_username)
+    return render_template('all_tweets.html', all_tweets=all_tweets)
 
 @app.route('/all_users')
 def see_all_users():
@@ -146,6 +211,13 @@ def see_all_users():
     # TODO SI364: Fill in this view function so it can successfully render the template all_users.html, which is provided. (See instructions for more detail.)
     ## HINT: Check out the all_songs and all_artists routes in the songs app you saw in class.
 
+    # looks like I'll want to send a list of lists (or tuples) called usernames where the 
+    # first item for each element is the username and the second is the number of tweets they have sent
+    all_users = []
+    users = User.query.all()
+    for u in users:
+        all_users.append(u.text, user.twitter_username)
+    return render_template('all_tweets.html', all_tweets=all_tweets)
 
 if __name__ == '__main__':
     db.create_all()
