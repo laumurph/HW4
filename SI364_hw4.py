@@ -22,7 +22,7 @@ app.config['SECRET_KEY'] = 'hardtoguessstringfromsi364thisisnotsupersecure'
 ## TODO SI364: Create a database in postgresql in the code line below, and fill in your app's database URI. It should be of the format: postgresql://localhost/YOUR_DATABASE_NAME
 
 ## Your Postgres database should be your uniqname, plus HW4, e.g. "jczettaHW4" or "maupandeHW4"
-app.config["SQLALCHEMY_DATABASE_URI"] = "laumurphHW4"
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://localhost/laumurphtester"
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -51,8 +51,9 @@ manager.add_command("shell", Shell(make_context=make_shell_context))
 ## The following relationships should exist between them:
 # Tweet:User - Many:One
 # Tweet:Hashtag - Many:Many
+tweet_hashtags = db.Table('tweet_hashtags', db.Column('tweet_id', db.Integer, db.ForeignKey('tweets.id')), db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtags.id')))
 
-# - Tweet
+# # - Tweet
 class Tweet(db.Model):
     __tablename__ = "tweets"
     id = db.Column(db.Integer, primary_key=True) ## -- id (Primary Key)
@@ -75,7 +76,6 @@ class Hashtag(db.Model):
 # Association Table: Tweet_Hashtag
 # -- tweet_id
 # -- hashtag_id
-tweet_hashtags = db.Table('Tweet_Hashtags', db.Column('tweet_id', db.Integer, db.ForeignKey('tweets.id')), db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtags.id')))
 ## NOTE: You'll have to set up database relationship code in either the Tweet table or the Hashtag table so that the association table for that many-many relationship will work properly!
 
 
@@ -181,7 +181,7 @@ def index():
     tweets = Tweet.query.all()
     num_tweets = len(tweets)
     form = TweetForm()
-    if form.validate on submit():
+    if form.validate_on_submit():
         if db.session.query(Tweet).filter_by(text=form.text.data, user_id= (get_or_create_user(db.session, form.username.data).id)).first():
             flash("You've already saved a tweet by this user!")
         get_or_create_tweet(db.session, form.text.data, form.username.data)
@@ -202,7 +202,7 @@ def see_all_tweets():
     tweets = Tweet.query.all()
     for t in tweets:
         user = User.query.filter_by(id=t.user_id).first()
-        all_tweets.append(t.text, user.twitter_username)
+        all_tweets.append((t.text, user.twitter_username))
     return render_template('all_tweets.html', all_tweets=all_tweets)
 
 @app.route('/all_users')
@@ -215,8 +215,7 @@ def see_all_users():
     # first item for each element is the username and the second is the number of tweets they have sent
     all_users = []
     users = User.query.all()
-    for u in users:
-        all_users.append(u.text, user.twitter_username)
+    all_tweets = [(Tweet.query.filter_by(user_id=user.id).count(), user.twitter_username) for user in users]
     return render_template('all_tweets.html', all_tweets=all_tweets)
 
 if __name__ == '__main__':
