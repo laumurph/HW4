@@ -22,7 +22,7 @@ app.config['SECRET_KEY'] = 'hardtoguessstringfromsi364thisisnotsupersecure'
 ## TODO SI364: Create a database in postgresql in the code line below, and fill in your app's database URI. It should be of the format: postgresql://localhost/YOUR_DATABASE_NAME
 
 ## Your Postgres database should be your uniqname, plus HW4, e.g. "jczettaHW4" or "maupandeHW4"
-app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://localhost/laumurphtester"
+app.config["SQLALCHEMY_DATABASE_URI"] = "postgresql://localhost/laumurphHW4"
 app.config['SQLALCHEMY_COMMIT_ON_TEARDOWN'] = True
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -51,6 +51,7 @@ manager.add_command("shell", Shell(make_context=make_shell_context))
 ## The following relationships should exist between them:
 # Tweet:User - Many:One
 # Tweet:Hashtag - Many:Many
+#associations table up here so I don't ruin my code
 tweet_hashtags = db.Table('tweet_hashtags', db.Column('tweet_id', db.Integer, db.ForeignKey('tweets.id')), db.Column('hashtag_id', db.Integer, db.ForeignKey('hashtags.id')))
 
 # # - Tweet
@@ -61,18 +62,25 @@ class Tweet(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id')) ## -- user_id (Integer, ID of user posted)
     hashtags = db.relationship('Hashtag', secondary=tweet_hashtags, backref=db.backref('tweets', lazy='dynamic'),lazy='dynamic')
 
+    def __repr__(self):
+        return "{}, (ID: {})".format(self.text,self.id)
+
 # - User
 class User(db.Model):
     __tablename__ = "users"
     id = db.Column(db.Integer, primary_key=True) ## -- id (Primary Key)
     twitter_username = db.Column(db.String(64), unique=True) ## -- twitter_username (String, up to 64 chars) (Unique=True)
     # will I need a tweets thing? possibly
+    def __repr__(self):
+        return "{} (ID: {})".format(self.twitter_username,self.id)
 # - Hashtag
 class Hashtag(db.Model):
     __tablename__ = 'hashtags'
     id = db.Column(db.Integer, primary_key=True) ## -- id (Primary Key)
     text = db.Column(db.String, unique=True) ## -- text (Unique=True) #represents a single hashtag (like UMSI)
 
+    def __repr__(self):
+        return "{} (ID: {})".format(self.text,self.id)
 # Association Table: Tweet_Hashtag
 # -- tweet_id
 # -- hashtag_id
@@ -134,7 +142,8 @@ def get_or_create_tweet(db_session, input_text, username):
         for text in input_text.split(','):
             if "#" in text.strip():
                 pos = text.find('#')
-                hashtag = get_or_create_hashtag(db_session, text.strip()[pos:])
+                word = text[pos:].replace("#", '')
+                hashtag = get_or_create_hashtag(db_session, word.strip())
         tweet = Tweet(text = input_text, user_id = user.id) # may need to add hashtag here, but probably not?
         db_session.add(tweet)
         db_session.commit()
